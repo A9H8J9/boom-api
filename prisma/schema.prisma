@@ -1,0 +1,279 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model User {
+  id       String @id @default(cuid())
+  name     String
+  email    String @unique
+  password String
+
+  blogs   Blog[]
+  inboxes Inbox[]
+
+  ownedWorkspaces      Workspace[]       @relation("WorkspaceOwner")
+  workspaceMemberships WorkspaceMember[] @relation("WorkspaceMemberUser")
+
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  createdProjects      Project[]             @relation("ProjectCreator")
+  createdPages         Page[]                @relation("PageCreator")
+  favorites            Favorite[]
+  settings             UserSettings?
+  notificationSettings NotificationSettings?
+
+  @@map("users")
+}
+
+model Plan {
+  id           String  @id @default(cuid())
+  name         String  @unique
+  description  String  @db.Text
+  slug         String  @unique
+  monthlyPrice Int     @default(0)
+  yearlyPrice  Int     @default(0)
+  isPopular    Boolean @default(false)
+  features     Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("plans")
+}
+
+model Blog {
+  id         String  @id @default(cuid())
+  title      String
+  slug       String  @unique
+  excerpt    String? @db.Text
+  content    Json?
+  coverImage String?
+
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id])
+
+  tags BlogTag[]
+
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([authorId])
+  @@map("blogs")
+}
+
+model BlogTag {
+  id    String @id @default(cuid())
+  name  String @unique
+  blogs Blog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("blogTags")
+}
+
+model Inbox {
+  id          String    @id @default(cuid())
+  title       String
+  description String?   @db.Text
+  type        InboxType
+
+  isRead Boolean @default(false)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId, isRead, createdAt])
+  @@map("inbox")
+}
+
+enum InboxType {
+  GENERAL
+  WORKSPACE
+  COMMENT
+  MENTION
+  INVITATION
+  SYSTEM
+  BILLING
+}
+
+model Workspace {
+  id                 String  @id @default(cuid())
+  name               String
+  icon               String?
+  slug               String  @unique
+  allowPublicLinks   Boolean @default(true)
+  allowMemberExport  Boolean @default(true)
+  allowMemberInvites Boolean @default(true)
+
+  ownerId String
+  owner   User   @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+
+  deletedAt        DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  workspaceMembers WorkspaceMember[]
+  projects         Project[]
+  pages            Page[]
+
+  @@index([ownerId])
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id   String        @id @default(cuid())
+  role WorkspaceRole @default(MEMBER)
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation("WorkspaceMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  joinedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@index([workspaceId, role])
+  @@map("workspaceMembers")
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+  GUEST
+}
+
+model Project {
+  id   String @id @default(cuid())
+  name String
+  slug String
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  createdById String
+  createdBy   User   @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([workspaceId, slug])
+  @@map("projects")
+}
+
+enum PageMode {
+  PAGE
+  EDGELESS
+}
+
+model Page {
+  id          String   @id @default(cuid())
+  title       String   @default("بدون عنوان")
+  description String?  @db.Text
+  mode        PageMode @default(PAGE)
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  createdById String
+  createdBy   User   @relation("PageCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  parentId String?
+  parent   Page?   @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+
+  children  Page[]     @relation("PageHierarchy")
+  favorites Favorite[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([workspaceId])
+  @@index([workspaceId, deletedAt])
+  @@map("pages")
+}
+
+model Favorite {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  pageId String
+  page   Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, pageId])
+  @@index([userId, createdAt])
+  @@index([pageId])
+  @@map("favorites")
+}
+
+enum StartPage {
+  DASHBOARD
+  LAST_VISITED
+  AI
+  PROJECT
+  ALL_BOOM
+}
+
+enum NewPageTitleMode {
+  UNTITLED
+  DATE
+}
+
+model UserSettings {
+  id                 String           @id @default(cuid())
+  language           String           @default("fa")
+  startPage          StartPage        @default(DASHBOARD)
+  timezone           String           @default("UTC")
+  autoDetectTimezone Boolean          @default(true)
+  sidebarCollapsed   Boolean          @default(false)
+  newPageTitleMode   NewPageTitleMode @default(UNTITLED)
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("userSettings")
+}
+
+model NotificationSettings {
+  id             String  @id @default(cuid())
+  desktopEnabled Boolean @default(false)
+  inAppEnabled   Boolean @default(true)
+  emailEnabled   Boolean @default(true)
+  soundEnabled   Boolean @default(false)
+  mentionEnabled Boolean @default(true)
+  commentEnabled Boolean @default(true)
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("notificationSettings")
+}
